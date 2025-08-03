@@ -1,75 +1,52 @@
 import streamlit as st
 import pandas as pd
-from io import BytesIO
-from logic import SupplyGapAnalyzer
+import numpy as np
+import plotly.express as px
+from logic import compute_supply_gap, summarize_data
 
-# -----------------------------
-# App Metadata
-# -----------------------------
-st.set_page_config(page_title="Udant Utility", layout="centered")
-st.title("🌾 Udant Supply Chain Utility")
+st.set_page_config(page_title="Udant Supply Chain Utility", layout="wide")
+st.title("📈 Udant Supply Chain Utility")
+st.caption("Analyze and visualize yield mismatches in contract farming.")
+st.markdown("This tool compares forecasted and actual crop yields to calculate drift, deviation, and supply status.")
 
-st.markdown("""
-Analyze and visualize yield mismatches in contract farming.
-
-This tool compares **forecasted** and **actual** crop yields to calculate drift, deviation, and supply status.
-""")
-
-# -----------------------------
-# Input Section
-# -----------------------------
+# --- Input Section
 st.subheader("📥 Enter Forecast and Actual Data")
 
-with st.form("form"):
-    crop_names = st.text_input("Crop Names (comma-separated)", "Tomato, Wheat, Rice")
-    forecast = st.text_input("Forecast Quantities (kg)", "100, 200, 150")
-    actual = st.text_input("Actual Harvested Quantities (kg)", "90, 180, 160")
-    submitted = st.form_submit_button("Analyze")
+crops = st.text_input("Crop Names (comma-separated)", "Tomato, Wheat, Rice")
+forecast = st.text_input("Forecast Quantities (kg)", "100, 200, 150")
+actual = st.text_input("Actual Harvest Quantities (kg)", "90, 180, 160")
 
-# -----------------------------
-# Analysis & Output
-# -----------------------------
-if submitted:
+if st.button("🔍 Analyze"):
     try:
-        analyzer = SupplyGapAnalyzer(crop_names, forecast, actual)
-        df = analyzer.compute_gap()
-        summary = analyzer.get_summary()
+        df = compute_supply_gap(crops, forecast, actual)
+        summary = summarize_data(df)
 
         st.success("✅ Analysis Completed")
 
+        # --- Data Table
         st.subheader("📊 Supply Gap Table")
-        st.dataframe(df)
+        st.dataframe(df, use_container_width=True)
 
-        st.subheader("📈 Forecast vs Actual Chart")
-        chart_df = df.set_index("Crop")[["Forecast (kg)", "Actual (kg)"]]
-        st.bar_chart(chart_df)
+        # --- Bar Chart: Forecast vs Actual
+        st.subheader("📉 Forecast vs Actual Chart")
+        bar_chart = px.bar(df, x="Crop", y=["Forecast (kg)", "Actual (kg)"],
+                           barmode="group", color_discrete_map={
+                               "Forecast (kg)": "lightblue",
+                               "Actual (kg)": "darkblue"
+                           })
+        st.plotly_chart(bar_chart, use_container_width=True)
 
-        st.subheader("📉 Gap Percentage Line Chart")
-        st.line_chart(df.set_index("Crop")[["Gap (%)"]])
+        # --- Line Chart: Gap Percentage
+        st.subheader("📈 Gap Percentage Line Chart")
+        line_chart = px.line(df, x="Crop", y="Gap (%)", markers=True)
+        st.plotly_chart(line_chart, use_container_width=True)
 
-        st.subheader("🧾 Summary")
-        st.write(f"**Total Forecasted:** {summary['Total Forecasted (kg)']} kg")
-        st.write(f"**Total Actual:** {summary['Total Actual (kg)']} kg")
-        st.write(f"**Net Gap:** {summary['Net Supply Gap (kg)']} kg")
-        st.write(f"**Avg Gap (%):** {summary['Average Gap (%)']}%")
-
-        # -----------------------------
-        # Download Section
-        # -----------------------------
-        def convert_df_to_excel(dataframe):
-            output = BytesIO()
-            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                dataframe.to_excel(writer, index=False, sheet_name='Supply Gap')
-            return output.getvalue()
-
-        excel_data = convert_df_to_excel(df)
-
-        st.download_button(
-            label="📥 Download Excel Report",
-            data=excel_data,
-            file_name="udant_supply_gap.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+        # --- Summary Metrics
+        st.subheader("📋 Summary")
+        st.markdown(f"- **Total Forecasted**: {summary['Total Forecast']} kg")
+        st.markdown(f"- **Total Actual**: {summary['Total Actual']} kg")
+        st.markdown(f"- **Net Gap**: {summary['Net Gap']} kg")
+        st.markdown(f"- **Average Gap %**: {summary['Average Gap %']}%")
 
     except Exception as e:
         st.error(f"⚠️ Error: {e}")
