@@ -1,42 +1,34 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-from logic import SupplyGapAnalyzer
 from io import BytesIO
+from logic import SupplyGapAnalyzer
 
-# ---------------------------------------------------
-# CONFIGURATION
-# ---------------------------------------------------
-st.set_page_config(
-    page_title="Udant Supply Chain Utility",
-    layout="centered",
-    initial_sidebar_state="expanded"
-)
-
+# -----------------------------
+# App Metadata
+# -----------------------------
+st.set_page_config(page_title="Udant Utility", layout="centered")
 st.title("🌾 Udant Supply Chain Utility")
-st.markdown("""
-**Purpose:** Detect and quantify supply-demand mismatches in contract farming.
 
-This tool supports field pilots, farmer-buyer alignment, and stakeholder evaluations using real or simulated data.
+st.markdown("""
+Analyze and visualize yield mismatches in contract farming.
+
+This tool compares **forecasted** and **actual** crop yields to calculate drift, deviation, and supply status.
 """)
 
-st.markdown("---")
+# -----------------------------
+# Input Section
+# -----------------------------
+st.subheader("📥 Enter Forecast and Actual Data")
 
-# ---------------------------------------------------
-# INPUT FORM
-# ---------------------------------------------------
-st.subheader("📥 Step 1: Enter Contract Data")
-
-with st.form("contract_form"):
+with st.form("form"):
     crop_names = st.text_input("Crop Names (comma-separated)", "Tomato, Wheat, Rice")
     forecast = st.text_input("Forecast Quantities (kg)", "100, 200, 150")
-    actual = st.text_input("Actual Yield (kg)", "90, 180, 160")
-    submitted = st.form_submit_button("🔍 Analyze Supply Gap")
+    actual = st.text_input("Actual Harvested Quantities (kg)", "90, 180, 160")
+    submitted = st.form_submit_button("Analyze")
 
-# ---------------------------------------------------
-# ANALYSIS LOGIC
-# ---------------------------------------------------
+# -----------------------------
+# Analysis & Output
+# -----------------------------
 if submitted:
     try:
         analyzer = SupplyGapAnalyzer(crop_names, forecast, actual)
@@ -45,70 +37,39 @@ if submitted:
 
         st.success("✅ Analysis Completed")
 
-        st.subheader("📋 Contract-Wise Supply Gap")
-        st.dataframe(df.style.format({
-            "Forecast (kg)": "{:.1f}",
-            "Actual (kg)": "{:.1f}",
-            "Gap (kg)": "{:.1f}",
-            "Gap (%)": "{:.2f}"
-        }))
+        st.subheader("📊 Supply Gap Table")
+        st.dataframe(df)
 
-        # ---------------------------------------------------
-        # STAKEHOLDER-SAFE SUMMARY
-        # ---------------------------------------------------
-        st.subheader("📊 Summary Metrics")
-        col1, col2 = st.columns(2)
+        st.subheader("📈 Forecast vs Actual Chart")
+        chart_df = df.set_index("Crop")[["Forecast (kg)", "Actual (kg)"]]
+        st.bar_chart(chart_df)
 
-        with col1:
-            st.metric("Total Forecast (kg)", summary["Total Forecasted (kg)"])
-            st.metric("Total Actual (kg)", summary["Total Actual (kg)"])
-        with col2:
-            st.metric("Net Supply Gap (kg)", summary["Net Supply Gap (kg)"])
-            st.metric("Average Gap (%)", f"{summary['Average Gap (%)']}%")
+        st.subheader("📉 Gap Percentage Line Chart")
+        st.line_chart(df.set_index("Crop")[["Gap (%)"]])
 
-        st.markdown("---")
+        st.subheader("🧾 Summary")
+        st.write(f"**Total Forecasted:** {summary['Total Forecasted (kg)']} kg")
+        st.write(f"**Total Actual:** {summary['Total Actual (kg)']} kg")
+        st.write(f"**Net Gap:** {summary['Net Supply Gap (kg)']} kg")
+        st.write(f"**Avg Gap (%):** {summary['Average Gap (%)']}%")
 
-        # ---------------------------------------------------
-        # CHARTS
-        # ---------------------------------------------------
-        st.subheader("📈 Forecast vs Actual Visuals")
-
-        fig1, ax1 = plt.subplots()
-        df.plot(kind='bar', x='Crop', y=['Forecast (kg)', 'Actual (kg)'], ax=ax1,
-                color=['#4caf50', '#2196f3'])
-        ax1.set_ylabel("Quantity (kg)")
-        ax1.set_title("Forecast vs Actual Yield")
-        st.pyplot(fig1)
-
-        fig2, ax2 = plt.subplots()
-        sns.lineplot(data=df, x='Crop', y='Gap (%)', marker='o', ax=ax2, color="#f44336")
-        ax2.axhline(0, linestyle='--', color='gray')
-        ax2.set_ylabel("Gap (%)")
-        ax2.set_title("Gap Percentage by Crop")
-        st.pyplot(fig2)
-
-        # ---------------------------------------------------
-        # REPORT EXPORT
-        # ---------------------------------------------------
-        def to_excel(dataframe):
+        # -----------------------------
+        # Download Section
+        # -----------------------------
+        def convert_df_to_excel(dataframe):
             output = BytesIO()
             with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                dataframe.to_excel(writer, sheet_name='Udant_Gap_Report', index=False)
+                dataframe.to_excel(writer, index=False, sheet_name='Supply Gap')
             return output.getvalue()
 
-        excel_data = to_excel(df)
+        excel_data = convert_df_to_excel(df)
 
         st.download_button(
             label="📥 Download Excel Report",
             data=excel_data,
-            file_name="Udant_Supply_Gap_Report.xlsx",
+            file_name="udant_supply_gap.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
-        st.markdown("---")
-
-        st.caption("Report generated using Udant's symbolic contract utility system. For institutional pilots, contact your local coordination team.")
-
     except Exception as e:
         st.error(f"⚠️ Error: {e}")
-
